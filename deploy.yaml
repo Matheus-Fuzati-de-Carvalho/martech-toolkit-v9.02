@@ -1,0 +1,37 @@
+name: Deploy MarTech Toolkit
+on:
+  push:
+    branches:
+      - main # O deploy roda sozinho quando o código chega na main
+
+jobs:
+  terraform-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Necessário para o Workload Identity
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Autenticação no GCP (Sem chaves JSON!)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/12345/locations/global/workloadIdentityPools/github/providers/meu-repo'
+          service_account: 'minha-sa-terraform@meu-projeto.iam.gserviceaccount.com'
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+        env:
+          # Injetando as variáveis de controle do GitHub direto para o Terraform
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+          TF_VAR_enable_ga4: ${{ vars.ENABLE_GA4 }}
+          TF_VAR_enable_meta_ads: ${{ vars.ENABLE_META_ADS }}
+          # ... demais variáveis
