@@ -1,37 +1,64 @@
-name: Deploy MarTech Toolkit
+name: 'MarTech Toolkit Deploy'
+
 on:
   push:
-    branches:
-      - main # O deploy roda sozinho quando o código chega na main
+    branches: [ "main" ]
+  # Permite rodar manualmente e escolher as flags
+  workflow_dispatch:
+    inputs:
+      enable_ga4:
+        description: 'Ativar extração GA4?'
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+      enable_meta_ads:
+        description: 'Ativar extração Meta Ads?'
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+      enable_google_ads:
+        description: 'Ativar extração Google Ads?'
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+      cron_schedule:
+        description: 'Horário do Scheduler (Cron)'
+        default: '0 5 * * *'
+        type: string
 
 jobs:
-  terraform-deploy:
+  terraform:
+    name: 'Terraform Deploy'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      id-token: write # Necessário para o Workload Identity
+      contents: 'read'
+      id-token: 'write'
 
     steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: Autenticação no GCP (Sem chaves JSON!)
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: 'projects/12345/locations/global/workloadIdentityPools/github/providers/meu-repo'
-          service_account: 'minha-sa-terraform@meu-projeto.iam.gserviceaccount.com'
+    - name: Google Auth
+      uses: 'google-github-actions/auth@v2'
+      with:
+        workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}'
+        service_account: '${{ secrets.GCP_SA_EMAIL }}'
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init
-        run: terraform init
+    - name: Terraform Init
+      working-directory: ./terraform
+      run: terraform init
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve
-        env:
-          # Injetando as variáveis de controle do GitHub direto para o Terraform
-          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
-          TF_VAR_enable_ga4: ${{ vars.ENABLE_GA4 }}
-          TF_VAR_enable_meta_ads: ${{ vars.ENABLE_META_ADS }}
-          # ... demais variáveis
+    - name: Terraform Apply
+      working-directory: ./terraform
+      run: |
+        # Usamos uma lógica para pegar ou o input manual ou o valor padrão do repositório
+        terraform apply -auto-approve \
+          -var="project_id=${{ vars.GCP_PROJECT_ID }}" \
+          -var="enable_ga4=${{ github.event.inputs.enable_ga4 || vars.ENABLE_GA4 }}" \
+          -var="enable_meta_ads=${{ github.event.inputs.enable_meta_ads || vars.ENABLE_META_ADS }}" \
+          -var="enable_google_ads=${{ github.event.inputs.enable_google_ads || vars.ENABLE_GOOGLE_ADS }}" \
+          -var="enable_error_alert=${{ vars.ENABLE_ERROR_ALERT }}" \
+          -var="cron_schedule=${{ github.event.inputs.cron_schedule || vars.CRON_SCHEDULE }}"
