@@ -68,8 +68,9 @@ variable "scheduler_cron" {
 # --- REPOSITÓRIO E GITHUB (Referência v9) ---
 
 variable "github_repo_url" {
-  description = "URL do repositório no GitHub para o Dataform"
   type        = string
+  description = "URL do repositorio no GitHub para o Dataform"
+  default     = "https://github.com/Matheus-Fuzati-de-Carvalho/martech-toolkit-v9-02.git"
 }
 
 variable "github_token" {

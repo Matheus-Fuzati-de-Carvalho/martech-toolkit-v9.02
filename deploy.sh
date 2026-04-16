@@ -48,6 +48,7 @@ terraform apply -auto-approve \
   -var="project_id=${PROJECT_ID}" \
   -var="region=${REGION}" \
   -var="github_token=${GITHUB_TOKEN}" \
+  -var="github_repo_url=https://github.com/Matheus-Fuzati-de-Carvalho/martech-toolkit-v9-02.git" \
   -var="ga4_enable=${GA4_ENABLE}" \
   -var="meta_ads_enable=${META_ENABLE}" \
   -var="google_ads_enable=${GADS_ENABLE}" \

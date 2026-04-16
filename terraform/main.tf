@@ -18,7 +18,7 @@ locals {
 
 # 3. Gerar o ZIP de cada pasta de código
 data "archive_file" "source_zip" {
-  for_each    = { for k, v in locals.modules : k => v if v.enable }
+  for_each    = { for k, v in local.modules : k => v if v.enable }
   type        = "zip"
   source_dir  = each.value.src
   output_path = "${path.module}/files/${each.key}.zip"
@@ -34,7 +34,7 @@ resource "google_storage_bucket_object" "zip_upload" {
 
 # 5. Criação das Cloud Functions (v1 - Padrão Simples)
 resource "google_cloudfunctions_function" "functions" {
-  for_each    = { for k, v in locals.modules : k => v if v.enable }
+  for_each    = { for k, v in local.modules : k => v if v.enable }
   name        = "ext-${each.key}"
   description = "Modulo de extracao ${each.key} - v9.01 Style"
   runtime     = "python311"
