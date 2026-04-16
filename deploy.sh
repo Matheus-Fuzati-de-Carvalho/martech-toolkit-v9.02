@@ -1,57 +1,62 @@
 #!/bin/bash
-# =================================================================
-# MARTECH TOOLKIT V9.02 - PRODUCTION DEPLOYER (CLEAN LOGS)
-# =================================================================
-set -e
+set -e # Para o script se algo falhar
 
-# --- [ 0. CAPTURA DE ARGUMENTOS ] ---
-GITHUB_TOKEN=${1:-""}
-PROJECT_ID=${2:-""}
-REGION=${3:-"us-central1"}
-GA4_ENABLE=${4:-"true"}
-META_ENABLE=${5:-"true"}
-GADS_ENABLE=${6:-"true"}
-ALERT_EMAIL_ENABLE=${7:-"false"}
-SENDER_EMAIL=${8:-""}
-RECEIVER_EMAIL=${9:-""}
-EMAIL_PASSWORD=${10:-""}
+# --- [ 0. ARGUMENTOS ] ---
+GITHUB_TOKEN=$1
+PROJECT_ID=$2
+REGION=$3
+GA4_ENABLE=$4
+META_ENABLE=$5
+GADS_ENABLE=$6
+ALERT_EMAIL_ENABLE=$7
 
-# --- [ 1. PREPARAÇÃO ] ---
-chmod +x "$0" 2>/dev/null || true
 echo "---------------------------------------------------------"
-echo "🚀 Iniciando Deploy Martech Toolkit v9.02"
-echo "Project: ${PROJECT_ID} | Region: ${REGION}"
+echo "🚀 REINICIANDO IMPLANTAÇÃO V9.02"
 echo "---------------------------------------------------------"
 
-echo "📡 1. Ativando APIs necessárias..."
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
-    dataform.googleapis.com cloudscheduler.googleapis.com \
-    workflows.googleapis.com secretmanager.googleapis.com \
-    bigquery.googleapis.com --project="${PROJECT_ID}" --quiet
+# 1. Ativação de APIs (Uma por uma para não dar erro)
+echo "📡 1. Ativando APIs..."
+gcloud services enable run.googleapis.com --project=$PROJECT_ID
+gcloud services enable cloudbuild.googleapis.com --project=$PROJECT_ID
+gcloud services enable dataform.googleapis.com --project=$PROJECT_ID
+gcloud services enable bigquery.googleapis.com --project=$PROJECT_ID
+gcloud services enable workflows.googleapis.com --project=$PROJECT_ID
 
-echo "📦 2. Build das imagens (Sequencial para logs limpos)..."
-services=()
-[[ "$GA4_ENABLE" == "true" ]] && services+=("ext_ga4")
-[[ "$META_ENABLE" == "true" ]] && services+=("ext_meta_ads")
-[[ "$GADS_ENABLE" == "true" ]] && services+=("ext_google_ads")
-[[ "$ALERT_EMAIL_ENABLE" == "true" ]] && services+=("alert_service")
+# 2. Build das Imagens (Sequencial - Sem erros de cota)
+echo "📦 2. Construindo Motores de Extração..."
 
-for svc in "${services[@]}"; do
-    echo "🔨 Construindo $svc... (Aguarde)"
-    gcloud builds submit --tag "gcr.io/${PROJECT_ID}/$svc:latest" "./cloud_run/$svc" --project="${PROJECT_ID}" --quiet
-    echo "✅ $svc finalizado com sucesso."
-done
+if [ "$GA4_ENABLE" == "true" ]; then
+    echo "🔨 Construindo GA4..."
+    gcloud builds submit --tag gcr.io/$PROJECT_ID/ext_ga4:latest ./cloud_run/ext_ga4 --project=$PROJECT_ID --quiet
+fi
 
-echo "📝 3. Injetando Project ID no Dataform..."
+if [ "$META_ENABLE" == "true" ]; then
+    echo "🔨 Construindo Meta Ads..."
+    gcloud builds submit --tag gcr.io/$PROJECT_ID/ext_meta_ads:latest ./cloud_run/ext_meta_ads --project=$PROJECT_ID --quiet
+fi
+
+if [ "$GADS_ENABLE" == "true" ]; then
+    echo "🔨 Construindo Google Ads..."
+    gcloud builds submit --tag gcr.io/$PROJECT_ID/ext_google_ads:latest ./cloud_run/ext_google_ads --project=$PROJECT_ID --quiet
+fi
+
+# 3. Preparação do Dataform
+echo "📝 3. Configurando IDs no Dataform..."
 find ./dataform/definitions -type f -name "*.sqlx" -exec sed -i "s/ID_DO_PROJETO/${PROJECT_ID}/g" {} +
 
-echo "🏗️  4. Provisionando Infraestrutura (Terraform)..."
+# 4. Terraform (A hora da verdade)
+echo "🏗️  4. Provisionando Infraestrutura com Terraform..."
 cd terraform
 terraform init -reconfigure
-
-# Comando inline para evitar erros de quebra de linha
-terraform apply -auto-approve -var="project_id=${PROJECT_ID}" -var="region=${REGION}" -var="github_token=${GITHUB_TOKEN}" -var="ga4_enable=${GA4_ENABLE}" -var="meta_ads_enable=${META_ENABLE}" -var="google_ads_enable=${GADS_ENABLE}" -var="alert_email_enable=${ALERT_EMAIL_ENABLE}" -var="sender_email=${SENDER_EMAIL}" -var="receiver_email=${RECEIVER_EMAIL}" -var="email_password=${EMAIL_PASSWORD}"
+terraform apply -auto-approve \
+  -var="project_id=$PROJECT_ID" \
+  -var="region=$REGION" \
+  -var="github_token=$GITHUB_TOKEN" \
+  -var="ga4_enable=$GA4_ENABLE" \
+  -var="meta_ads_enable=$META_ENABLE" \
+  -var="google_ads_enable=$GADS_ENABLE" \
+  -var="alert_email_enable=$ALERT_EMAIL_ENABLE"
 
 echo "---------------------------------------------------------"
-echo "🏆 DEPLOY FINALIZADO COM SUCESSO!"
-echo "---------------------------------------------------------"S
+echo "🏆 V9.02 IMPLANTADA COM SUCESSO!"
+echo "---------------------------------------------------------"
