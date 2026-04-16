@@ -5,7 +5,8 @@ resource "google_dataform_repository" "martech_repository" {
   provider = google-beta
   name     = "martech-toolkit-repo"
   region   = var.region
-
+  depends_on = [google_project_service.services]
+  
   # Configuração do Git (Conexão com seu GitHub)
   git_remote_settings {
     url                                = var.github_repo_url

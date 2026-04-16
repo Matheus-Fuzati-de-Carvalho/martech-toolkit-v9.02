@@ -8,6 +8,7 @@ resource "google_storage_bucket" "source_bucket" {
 
 # 2. Configuração Genérica para os Módulos (GA4, Meta, Google, Alerta)
 locals {
+  data "google_project" "project" {}
   modules = {
     "ga4"    = { enable = var.ga4_enable, src = "../cloud_run/ext_ga4" }
     "meta"   = { enable = var.meta_ads_enable, src = "../cloud_run/ext_meta_ads" }
