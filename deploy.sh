@@ -1,72 +1,45 @@
 #!/bin/bash
+set -e
 
-# =================================================================
-# MARTECH TOOLKIT V9.02 - AUTOMATED DEPLOYER
-# =================================================================
+# --- [ 0. CAPTURA DE ARGUMENTOS ] ---
+# Se houver argumentos passados no comando, eles sobrescrevem as variáveis
+GITHUB_TOKEN=${1:-"ghp_token_default"}
+PROJECT_ID=${2:-"toolkit-v9-02"}
+REGION=${3:-"us-central1"}
+GA4_ENABLE=${4:-"true"}
+META_ENABLE=${5:-"true"}
+GADS_ENABLE=${6:-"true"}
+ALERT_EMAIL_ENABLE=${7:-"true"}
+SENDER_EMAIL=${8:-""}
+RECEIVER_EMAIL=${9:-""}
+EMAIL_PASSWORD=${10:-""}
 
-set -e # Para o script se qualquer comando falhar
+# --- [ 1. PERMISSÕES ] ---
+chmod +x "$0" 2>/dev/null || true
 
-echo "🚀 Iniciando o Deploy do Martech Toolkit v9.02..."
+echo "📡 1. Ativando APIs em ${PROJECT_ID}..."
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com dataform.googleapis.com cloudscheduler.googleapis.com workflows.googleapis.com secretmanager.googleapis.com bigquery.googleapis.com --project="${PROJECT_ID}"
 
-# 1. Coleta de Variáveis de Ambiente
-read -p "ID do Projeto GCP: " PROJECT_ID
-read -p "Região (ex: us-central1): " REGION
-read -p "E-mail do Remetente (Gmail): " SENDER_EMAIL
-read -p "E-mail do Destinatário: " RECEIVER_EMAIL
-read -sp "Senha de App do Gmail (Remetente): " EMAIL_PASSWORD
-echo ""
-read -sp "Token do GitHub (para o Dataform): " GITHUB_TOKEN
-echo ""
+echo "📦 2. Build paralelo das imagens..."
+services=()
+[[ "$GA4_ENABLE" == "true" ]] && services+=("ext_ga4")
+[[ "$META_ENABLE" == "true" ]] && services+=("ext_meta_ads")
+[[ "$GADS_ENABLE" == "true" ]] && services+=("ext_google_ads")
+[[ "$ALERT_EMAIL_ENABLE" == "true" ]] && services+=("alert_service")
 
-# 2. Configurar o GCloud
-gcloud config set project $PROJECT_ID
-
-# 3. Habilitar APIs Necessárias
-echo "⚙️ Habilitando APIs do Google Cloud..."
-gcloud services enable \
-    compute.googleapis.com \
-    run.googleapis.com \
-    workflows.googleapis.com \
-    dataform.googleapis.com \
-    cloudscheduler.googleapis.com \
-    cloudbuild.googleapis.com \
-    secretmanager.googleapis.com
-
-# 4. Build e Push das Imagens Cloud Run (via Cloud Build)
-# Fazemos isso antes do Terraform para que as imagens já existam quando ele as chamar
-echo "📦 Construindo e enviando imagens dos motores de extração..."
-
-services=("ext_ga4" "ext_meta_ads" "ext_google_ads" "alert_service")
-
-for service in "${services[@]}"; do
-    echo "🔨 Construindo $service..."
-    gcloud builds submit --tag "gcr.io/$PROJECT_ID/$service:latest" "./cloud_run/$service"
+for svc in "${services[@]}"; do
+    gcloud builds submit --tag "gcr.io/${PROJECT_ID}/$svc:latest" "./cloud_run/$svc" --project="${PROJECT_ID}" &
 done
+wait 
 
-# 5. Ajustes Dinâmicos no Dataform (Substituição do ID do Projeto)
-echo "📝 Ajustando referências de projeto no Dataform..."
-sed -i "s/ID_DO_PROJETO/$PROJECT_ID/g" ./dataform/definitions/0_raw/sources.sqlx
-sed -i "s/ID_DO_PROJETO/$PROJECT_ID/g" ./dataform/definitions/3_quality/dm_dq_finops_costs.sqlx
+echo "📝 3. Injetando Project ID no Dataform..."
+find ./dataform/definitions -type f -name "*.sqlx" -exec sed -i "s/ID_DO_PROJETO/${PROJECT_ID}/g" {} +
 
-# 6. Execução do Terraform
-echo "🏗️  Iniciando infraestrutura via Terraform..."
+echo "🏗️  4. Provisionando Infraestrutura..."
 cd terraform
-terraform init
+terraform init -reconfigure
 
-terraform apply -auto-approve \
-    -var="project_id=$PROJECT_ID" \
-    -var="region=$REGION" \
-    -var="sender_email=$SENDER_EMAIL" \
-    -var="receiver_email=$RECEIVER_EMAIL" \
-    -var="email_password=$EMAIL_PASSWORD" \
-    -var="github_token=$GITHUB_TOKEN"
+# Comando em linha única corrigido para v9.02
+terraform apply -auto-approve -var="project_id=${PROJECT_ID}" -var="region=${REGION}" -var="github_token=${GITHUB_TOKEN}" -var="ga4_enable=${GA4_ENABLE}" -var="meta_ads_enable=${META_ENABLE}" -var="google_ads_enable=${GADS_ENABLE}" -var="alert_email_enable=${ALERT_EMAIL_ENABLE}" -var="sender_email=${SENDER_EMAIL}" -var="receiver_email=${RECEIVER_EMAIL}" -var="email_password=${EMAIL_PASSWORD}"
 
-# 7. Finalização
-echo "✅ DEPLOY CONCLUÍDO COM SUCESSO!"
-echo "---------------------------------------------------------"
-echo "PRÓXIMOS PASSOS:"
-echo "1. Pegue o e-mail da Service Account gerada no IAM."
-echo "2. Compartilhe o acesso (Leitor) dos arquivos do Drive com ela."
-echo "3. O seu Workflow rodará automaticamente conforme o Scheduler,"
-echo "   mas você já pode dispará-lo manualmente no console do Cloud Workflows."
-echo "---------------------------------------------------------"
+echo "🚀 [OK] Martech Toolkit v9.02 implementado com sucesso!"
