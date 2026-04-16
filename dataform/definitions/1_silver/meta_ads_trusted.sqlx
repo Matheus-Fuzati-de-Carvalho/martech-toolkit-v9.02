@@ -1,0 +1,60 @@
+config {
+    type: helpers.shouldPublish(config.META_ADS_ENABLE, "incremental"),
+    schema: "TRUSTED",
+    name: "meta_ads_trusted",
+    assertions: {
+        uniqueKey: ["surrogate_key"],
+        nonNull: ["event_date", "campaign_id", "ad_id"],
+        rowConditions: [
+            "spend >= 0"
+        ]
+    },
+    description: "Layer TRUSTED: Dados de Meta Ads processados com limpeza de strings e deduplicação por ID de anúncio.",
+    tags: ["meta", "trusted", "silver"],
+    bigquery: {
+        partitionBy: "event_date",
+        clusterBy: ["campaign_name", "ad_name"],
+        labels: {
+            "layer": "trusted"
+        },
+        updatePartitionFilter: `event_date >= date_sub(current_date(), interval 7 day)`
+    }
+}
+
+WITH raw_data AS (
+    SELECT
+        safe_cast(event_date as date) as event_date,
+        trim(cast(campaign_id as string)) as campaign_id,
+        lower(trim(campaign_name)) as campaign_name,
+        trim(cast(ad_id as string)) as ad_id,
+        lower(trim(ad_name)) as ad_name,
+        safe_cast(spend as float64) as spend,
+        safe_cast(clicks as int64) as clicks,
+        safe_cast(impressions as int64) as impressions,
+        safe_cast(conversions as int64) as conversions,
+        current_timestamp() as insertion_at
+    FROM
+        ${ref("meta_ads_raw")}
+
+    ${when(incremental(), `WHERE safe_cast(event_date as date) >= date_sub(current_date(), interval 7 day)`) }
+)
+
+SELECT
+    -- Geramos a surrogate_key baseada na granularidade do anúncio por dia
+    to_hex(sha256(concat(
+        cast(event_date as string), 
+        campaign_id, 
+        ad_id
+    ))) AS surrogate_key,
+    * EXCEPT(insertion_at, rn),
+    insertion_at
+FROM (
+    SELECT 
+        *,
+        ROW_NUMBER() OVER(
+            PARTITION BY event_date, campaign_id, ad_id
+            ORDER BY insertion_at DESC
+        ) as rn
+    FROM raw_data
+)
+WHERE rn = 1

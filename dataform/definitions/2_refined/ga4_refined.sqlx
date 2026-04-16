@@ -1,0 +1,23 @@
+config {
+    type: helpers.shouldPublish(config.GA4_ENABLE, "table"),
+    schema: "REFINED",
+    name: "ga4_refined",
+    description: "Métricas de negócio GA4: Sessões e Conversões por canal.",
+    tags: ["ga4", "refined"]
+}
+
+SELECT
+    event_date,
+    campaign_source,
+    campaign_medium,
+    campaign_name,
+    count(distinct ga_session_id) as total_sessions,
+    count(if(event_name = 'purchase' or event_name = 'conversion', 1, null)) as total_conversions,
+    -- Exemplo de métrica de negócio: Taxa de Conversão
+    safe_divide(
+        count(if(event_name = 'purchase' or event_name = 'conversion', 1, null)),
+        count(distinct ga_session_id)
+    ) as conversion_rate
+FROM
+    ${ref("ga4_trusted")}
+GROUP BY 1, 2, 3, 4

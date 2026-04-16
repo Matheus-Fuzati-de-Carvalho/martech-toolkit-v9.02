@@ -1,0 +1,24 @@
+config {
+    type: helpers.shouldPublish(config.META_ADS_ENABLE, "table"),
+    schema: "REFINED",
+    name: "meta_ads_refined",
+    description: "Métricas de performance Meta Ads: ROI, CPC e CPA.",
+    tags: ["meta", "refined"]
+}
+
+SELECT
+    event_date,
+    campaign_id,
+    campaign_name,
+    ad_id,
+    ad_name,
+    sum(spend) as total_spend,
+    sum(clicks) as total_clicks,
+    sum(conversions) as total_conversions,
+    -- KPIs de Negócio
+    safe_divide(sum(spend), sum(clicks)) as cpc,
+    safe_divide(sum(spend), sum(conversions)) as cpa,
+    safe_divide(sum(clicks), sum(impressions)) as ctr
+FROM
+    ${ref("meta_ads_trusted")}
+GROUP BY 1, 2, 3, 4, 5
